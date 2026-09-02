@@ -8,6 +8,16 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "0.2.127"
+wasm-bindgen-futures = "0.4.77"
+web-sys = {version="0.3.104", features=[
+    "File",
+    "FormData",
+    "Request",
+    "RequestInit",
+    "RequestMode",
+    "Response",
+    "Window"
+]}
 
 [profile.release]
 lto = true

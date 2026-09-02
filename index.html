@@ -1,26 +1,60 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale =1.0">
-    <title>Plant sicness detector</title>
+  <meta charset="UTF-8">
+  <title>Rust Wasm Image Upload</title>
 </head>
 <body>
-    <h1>Plant sickness hi</h1>
-    <input id="name" placeholder="Enter name"/>
-    <button onclick="sayhello()">Say hello</button>
-    <p id="output"></p>
-    <script type="module">
-        import init, {greet} from "./pkg/plant_sickness.js";
-        async function run() {
-            await init();
+  <h2>Upload Image via Rust WebAssembly</h2>
+
+  <input type="file" id="fileInput" accept="image/*"><br><br>
+  <img id="preview" width="300" style="display:none;" alt="Preview"><br><br>
+  <button id="uploadBtn" style="display:none;">Upload to Server</button>
+
+  <p id="status"></p>
+
+  <script type="module">
+    import init, { upload_image } from './pkg/plant_sickness.js';
+
+    async function run() {
+      await init();
+
+      const fileInput = document.getElementById('fileInput');
+      const preview = document.getElementById('preview');
+      const uploadBtn = document.getElementById('uploadBtn');
+      const status = document.getElementById('status');
+
+      let selectedFile = null;
+
+      // Handle file selection and preview
+      fileInput.addEventListener('change', (e) => {
+        selectedFile = e.target.files[0];
+        if (selectedFile) {
+          preview.src = URL.createObjectURL(selectedFile);
+          preview.style.display = 'block';
+          uploadBtn.style.display = 'inline-block';
         }
-        run();
-        window.sayhello() = () => {
-            const name = document.getElementById("name").value;
-            const greeting = greet(name);
-            document.getElementById("output").textContent = greeting;
+      });
+
+      // Handle upload button click
+      uploadBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+
+        status.innerText = 'Uploading...';
+        
+        try {
+          // Send file via Rust to backend API
+          const serverResponse = await upload_image(selectedFile, 'https://httpbin.org/post');
+          status.innerText = 'Upload successful!';
+          console.log('Server response:', serverResponse);
+        } catch (err) {
+          status.innerText = 'Upload failed: ' + err;
+          console.error(err);
         }
-    </script>
+      });
+    }
+
+    run();
+  </script>
 </body>
 </html>
