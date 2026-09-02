@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plant Sickness Local Processing</title>
+  <title>LeafGuard - Canvas Processing</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -16,17 +16,18 @@
     </label>
     <input type="file" id="fileInput" accept="image/*">
 
-    <button id="processBtn" style="display: none;">Process Image</button>
+    <button id="processBtn" style="display: none;">Process & Render to Canvas</button>
 
     <div class="preview-container">
-      <img id="preview" alt="Processed Image Preview">
+      <!-- HTML5 Canvas replacing standard img tag -->
+      <canvas id="canvasPreview" width="224" height="224" style="display:none;"></canvas>
     </div>
 
     <div id="status" class="status-box">Select an image to start.</div>
   </div>
 
   <script type="module">
-    import init, { process_image_bytes } from './pkg/plant_sickness.js';
+    import init, { process_to_rgba } from './pkg/plant_sickness.js';
 
     async function run() {
       await init();
@@ -34,22 +35,20 @@
       const fileInput = document.getElementById('fileInput');
       const fileLabel = document.getElementById('fileLabel');
       const processBtn = document.getElementById('processBtn');
-      const preview = document.getElementById('preview');
+      const canvas = document.getElementById('canvasPreview');
+      const ctx = canvas.getContext('2d');
       const status = document.getElementById('status');
 
       let selectedFile = null;
 
       fileInput.addEventListener('change', (e) => {
         selectedFile = e.target.files[0];
-
-        // Reset preview state
-        preview.src = '';
-        preview.style.display = 'none';
+        canvas.style.display = 'none';
 
         if (selectedFile) {
           fileLabel.innerText = selectedFile.name;
           processBtn.style.display = 'block';
-          status.innerText = 'Ready to process.';
+          status.innerText = 'Ready to process in WASM.';
         } else {
           fileLabel.innerText = 'Choose Image File';
           processBtn.style.display = 'none';
@@ -60,7 +59,7 @@
       processBtn.addEventListener('click', () => {
         if (!selectedFile) return;
 
-        status.innerText = 'Processing in WebAssembly memory...';
+        status.innerText = 'Processing in WASM memory...';
         processBtn.disabled = true;
 
         const reader = new FileReader();
@@ -68,14 +67,21 @@
           try {
             const byteArray = new Uint8Array(reader.result);
             
-            // Pass byte array to Rust and get base64 Data URL back
-            const dataUrl = process_image_bytes(byteArray);
+            // 1. Rust returns raw RGBA pixel byte array (224 x 224 x 4 = 200,704 bytes)
+            const rgbaPixels = process_to_rgba(byteArray);
 
-            // Render local preview
-            preview.src = dataUrl;
-            preview.style.display = 'block';
+            // 2. Create Canvas ImageData from raw RGBA bytes
+            const imageData = new ImageData(
+              new Uint8ClampedArray(rgbaPixels.buffer), 
+              224, 
+              224
+            );
 
-            status.innerText = 'Processing complete! Preview rendered below.';
+            // 3. Draw directly onto HTML5 Canvas
+            ctx.putImageData(imageData, 0, 0);
+            canvas.style.display = 'block';
+
+            status.innerText = 'Rendered directly to Canvas via WASM raw pixel buffer!';
           } catch (err) {
             status.innerText = 'Error processing image: ' + err;
             console.error(err);
