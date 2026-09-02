@@ -2,55 +2,89 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Rust Wasm Image Upload</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plant Sickness Local Processing</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h2>Upload Image via Rust WebAssembly</h2>
 
-  <input type="file" id="fileInput" accept="image/*"><br><br>
-  <img id="preview" width="300" style="display:none;" alt="Preview"><br><br>
-  <button id="uploadBtn" style="display:none;">Upload to Server</button>
+  <div class="card">
+    <h2>Plant Sickness Detection</h2>
 
-  <p id="status"></p>
+    <label for="fileInput" class="file-label" id="fileLabel">
+      Choose Image File
+    </label>
+    <input type="file" id="fileInput" accept="image/*">
+
+    <button id="processBtn" style="display: none;">Process Image</button>
+
+    <div class="preview-container">
+      <img id="preview" alt="Processed Image Preview">
+    </div>
+
+    <div id="status" class="status-box">Select an image to start.</div>
+  </div>
 
   <script type="module">
-    import init, { upload_image } from './pkg/plant_sickness.js';
+    import init, { process_image_bytes } from './pkg/plant_sickness.js';
 
     async function run() {
       await init();
 
       const fileInput = document.getElementById('fileInput');
+      const fileLabel = document.getElementById('fileLabel');
+      const processBtn = document.getElementById('processBtn');
       const preview = document.getElementById('preview');
-      const uploadBtn = document.getElementById('uploadBtn');
       const status = document.getElementById('status');
 
       let selectedFile = null;
 
-      // Handle file selection and preview
       fileInput.addEventListener('change', (e) => {
         selectedFile = e.target.files[0];
+
+        // Reset preview state
+        preview.src = '';
+        preview.style.display = 'none';
+
         if (selectedFile) {
-          preview.src = URL.createObjectURL(selectedFile);
-          preview.style.display = 'block';
-          uploadBtn.style.display = 'inline-block';
+          fileLabel.innerText = selectedFile.name;
+          processBtn.style.display = 'block';
+          status.innerText = 'Ready to process.';
+        } else {
+          fileLabel.innerText = 'Choose Image File';
+          processBtn.style.display = 'none';
+          status.innerText = 'Select an image to start.';
         }
       });
 
-      // Handle upload button click
-      uploadBtn.addEventListener('click', async () => {
+      processBtn.addEventListener('click', () => {
         if (!selectedFile) return;
 
-        status.innerText = 'Uploading...';
-        
-        try {
-          // Send file via Rust to backend API
-          const serverResponse = await upload_image(selectedFile, 'https://httpbin.org/post');
-          status.innerText = 'Upload successful!';
-          console.log('Server response:', serverResponse);
-        } catch (err) {
-          status.innerText = 'Upload failed: ' + err;
-          console.error(err);
-        }
+        status.innerText = 'Processing in WebAssembly memory...';
+        processBtn.disabled = true;
+
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const byteArray = new Uint8Array(reader.result);
+            
+            // Pass byte array to Rust and get base64 Data URL back
+            const dataUrl = process_image_bytes(byteArray);
+
+            // Render local preview
+            preview.src = dataUrl;
+            preview.style.display = 'block';
+
+            status.innerText = 'Processing complete! Preview rendered below.';
+          } catch (err) {
+            status.innerText = 'Error processing image: ' + err;
+            console.error(err);
+          } finally {
+            processBtn.disabled = false;
+          }
+        };
+
+        reader.readAsArrayBuffer(selectedFile);
       });
     }
 

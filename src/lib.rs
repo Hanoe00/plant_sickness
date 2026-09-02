@@ -1,31 +1,24 @@
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
-use web_sys::{File, FormData, Request, RequestInit, RequestMode, Response, window};
+use image::{load_from_memory, ImageFormat};
+use std::io::Cursor;
+use base64::{engine::general_purpose, Engine as _};
 
 #[wasm_bindgen]
-pub async  fn upload_image(file: File, upload_url: &str) -> Result<String, JsValue>{
-    let form_data = FormData::new()?;
-    form_data.append_with_blob("file", &file)?;
+pub fn process_image_bytes(image_bytes: &[u8]) -> Result<String, JsValue> {
+    // Decodeing raw image byte array
+    let img = load_from_memory(image_bytes)
+        .map_err(|e| JsValue::from_str(&format!("Failed to decode image: {}", e)))?;
 
-    // 2. Configure the HTTP POST Request
-   let opts = RequestInit::new();
-    opts.set_method("POST");
-    opts.set_body(form_data.as_ref());
-    opts.set_mode(RequestMode::Cors);
+    // Resize image to 224x224 (standard ML input size)
+    let resized = img.resize_exact(224, 224, image::imageops::FilterType::Triangle);
 
-    let request = Request::new_with_str_and_init(upload_url, &opts)?;
+    //Writing encoded PNG bytes into memory
+    let mut encoded_bytes = Vec::new();
+    let mut cursor = Cursor::new(&mut encoded_bytes);
+    resized.write_to(&mut cursor, ImageFormat::Png)
+        .map_err(|e| JsValue::from_str(&format!("Failed to encode image: {}", e)))?;
 
-    // 3. Send the fetch request via browser window
-    let window = window().ok_or_else(|| JsValue::from_str("No window object found"))?;
-    let resp_value = JsFuture::from(window.fetch_with_request(&request)).await?;
-    let resp: Response = resp_value.dyn_into()?;
-
-    // 4. Check response status and return the result text
-    if resp.ok() {
-        let text_promise = resp.text()?;
-        let text = JsFuture::from(text_promise).await?;
-        Ok(text.as_string().unwrap_or_default())
-    } else {
-        Err(JsValue::from_str(&format!("Upload failed with status: {}", resp.status())))
-    }
+    //Returning as Data URL string to render image preview in JS
+    let base64_str = general_purpose::STANDARD.encode(&encoded_bytes);
+    Ok(format!("data:image/png;base64,{}", base64_str))
 }
