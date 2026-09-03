@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LeafGuard - Canvas Processing</title>
+  <title>Plant Sickness Local Processing</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11,86 +11,95 @@
   <div class="card">
     <h2>Plant Sickness Detection</h2>
 
-    <label for="fileInput" class="file-label" id="fileLabel">
-      Choose Image File
-    </label>
-    <input type="file" id="fileInput" accept="image/*">
+    <div class="action-buttons">
+      <!-- File Upload Label -->
+      <label for="fileInput" class="btn btn-secondary" id="fileLabel">
+        Choose Image File
+      </label>
+      <input type="file" id="fileInput" accept="image/*">
 
-    <button id="processBtn" style="display: none;">Process & Render to Canvas</button>
+      <!-- Camera Capture Label -->
+      <label for="cameraInput" class="btn btn-secondary">
+        📷 Take Picture
+      </label>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment">
+    </div>
+
+    <button id="processBtn" class="btn btn-primary" style="display: none;">Process Image (WASM)</button>
 
     <div class="preview-container">
-      <!-- HTML5 Canvas replacing standard img tag -->
       <canvas id="canvasPreview" width="224" height="224" style="display:none;"></canvas>
     </div>
 
-    <div id="status" class="status-box">Select an image to start.</div>
+    <div id="status" class="status-box">Select an image or take a photo to start.</div>
   </div>
 
   <script type="module">
-    import init, { process_to_rgba } from './pkg/plant_sickness.js';
+    import init, { process_image_full } from './pkg/plant_sickness.js';
 
     async function run() {
       await init();
 
       const fileInput = document.getElementById('fileInput');
+      const cameraInput = document.getElementById('cameraInput');
       const fileLabel = document.getElementById('fileLabel');
       const processBtn = document.getElementById('processBtn');
       const canvas = document.getElementById('canvasPreview');
       const ctx = canvas.getContext('2d');
       const status = document.getElementById('status');
 
-      let selectedFile = null;
+      let selectedByteArray = null;
 
-      fileInput.addEventListener('change', (e) => {
-        selectedFile = e.target.files[0];
+      async function handleFileSelect(file) {
         canvas.style.display = 'none';
 
-        if (selectedFile) {
-          fileLabel.innerText = selectedFile.name;
+        if (file) {
+          fileLabel.innerText = file.name;
+          const buffer = await file.arrayBuffer();
+          selectedByteArray = new Uint8Array(buffer);
           processBtn.style.display = 'block';
-          status.innerText = 'Ready to process in WASM.';
-        } else {
-          fileLabel.innerText = 'Choose Image File';
-          processBtn.style.display = 'none';
-          status.innerText = 'Select an image to start.';
+          status.innerText = 'Image loaded! Ready to process in WASM.';
         }
+      }
+
+      fileInput.addEventListener('change', (e) => {
+        handleFileSelect(e.target.files[0]);
+      });
+
+      cameraInput.addEventListener('change', (e) => {
+        handleFileSelect(e.target.files[0]);
       });
 
       processBtn.addEventListener('click', () => {
-        if (!selectedFile) return;
+        if (!selectedByteArray) return;
 
-        status.innerText = 'Processing in WASM memory...';
+        status.innerText = 'Executing pipeline (Decoding -> EXIF -> Scaling -> Segmentation -> Normalization)...';
         processBtn.disabled = true;
 
-        const reader = new FileReader();
-        reader.onload = () => {
-          try {
-            const byteArray = new Uint8Array(reader.result);
-            
-            // 1. Rust returns raw RGBA pixel byte array (224 x 224 x 4 = 200,704 bytes)
-            const rgbaPixels = process_to_rgba(byteArray);
+        try {
+          // Pass image bytes into Rust pipeline
+          const result = process_image_full(selectedByteArray);
 
-            // 2. Create Canvas ImageData from raw RGBA bytes
-            const imageData = new ImageData(
-              new Uint8ClampedArray(rgbaPixels.buffer), 
-              224, 
-              224
-            );
+          // 1. Extract RGBA bytes to draw on HTML5 Canvas
+          const rgbaBytes = result.rgba_bytes;
+          const imageData = new ImageData(
+            new Uint8ClampedArray(rgbaBytes.buffer),
+            224,
+            224
+          );
+          ctx.putImageData(imageData, 0, 0);
+          canvas.style.display = 'block';
 
-            // 3. Draw directly onto HTML5 Canvas
-            ctx.putImageData(imageData, 0, 0);
-            canvas.style.display = 'block';
+          // 2. Extract Normalized RGB Float Tensor
+          const normalizedTensor = result.normalized_tensor;
 
-            status.innerText = 'Rendered directly to Canvas via WASM raw pixel buffer!';
-          } catch (err) {
-            status.innerText = 'Error processing image: ' + err;
-            console.error(err);
-          } finally {
-            processBtn.disabled = false;
-          }
-        };
-
-        reader.readAsArrayBuffer(selectedFile);
+          status.innerText = `Processing complete! Canvas updated. Normalized Tensor Size: ${normalizedTensor.length} floats.`;
+        } catch (err) {
+          status.innerText = 'Error processing image: ' + err;
+          console.error(err);
+        } finally {
+          processBtn.disabled = false;
+        }
       });
     }
 
