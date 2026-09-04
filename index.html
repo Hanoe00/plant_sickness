@@ -36,16 +36,16 @@
   </div>
 
   <script type="module">
-    import init, { process_image_full, init_panic_hook } from './pkg/plant_sickness.js';
+    import init, { process_image_full} from './pkg/plant_sickness.js';
 
     async function run() {
       // Initialize WASM binary
       await init('./pkg/plant_sickness_bg.wasm');
       
       // Initialize Panic Hook for clear console errors if WASM panics
-      if (typeof init_panic_hook === 'function') {
-        init_panic_hook();
-      }
+      //if (typeof init_panic_hook === 'function') {
+       // init_panic_hook();
+      //}
 
       const fileInput = document.getElementById('fileInput');
       const cameraInput = document.getElementById('cameraInput');
