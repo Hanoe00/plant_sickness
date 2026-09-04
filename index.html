@@ -102,10 +102,10 @@
         processBtn.disabled = true;
 
         try {
-          // FIX 1: Pass null for the second argument (Option<FilterOptions>)
+          
           const result = process_image_full(selectedByteArray, null);
 
-          // FIX 2: Safely extract WebAssembly Uint8Array memory slice
+          
           const rgbaBytes = result.rgba_bytes;
           const clampedArray = new Uint8ClampedArray(
             rgbaBytes.buffer,
@@ -120,7 +120,7 @@
           // Access Tensor array
           const normalizedTensor = result.normalized_tensor;
 
-          status.innerText = `Processing complete! Tensor Size: ${normalizedTensor.length}`;
+          status.innerText = `Processing complete!`;
         } catch (err) {
           status.innerText = 'Error processing image: ' + err;
           console.error(err);
