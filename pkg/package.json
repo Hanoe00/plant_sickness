@@ -1,0 +1,15 @@
+{
+  "name": "plant_sickness",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "plant_sickness_bg.wasm",
+    "plant_sickness.js",
+    "plant_sickness.d.ts"
+  ],
+  "main": "plant_sickness.js",
+  "types": "plant_sickness.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
