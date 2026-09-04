@@ -174,7 +174,7 @@ mod tests {
 
     /// Generates mock PNG byte stream for testing
     fn create_dummy_png_bytes(width: u32, height: u32) -> Vec<u8> {
-        let img = ImageBuffer::from_fn(width, height, |x, y| {
+        let img = ImageBuffer::from_fn(width, height, |x, _y| {
             if x % 2 == 0 {
                 Rgb([0u8, 200u8, 0u8]) // Green pixel (leaf)
             } else {
