@@ -5,29 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Plant Sickness Detection</title>
   <link rel="stylesheet" href="styles.css">
-  <style>
-    .camera-container {
-      position: relative;
-      width: 100%;
-      max-width: 400px;
-      margin: 10px auto;
-      display: none;
-    }
-    video {
-      width: 100%;
-      border-radius: 8px;
-      background-color: #000;
-    }
-    .preview-container {
-      display: flex;
-      justify-content: center;
-      margin-top: 15px;
-    }
-    canvas {
-      border: 1px solid #ccc;
-      border-radius: 8px;
-    }
-  </style>
 </head>
 <body>
 
@@ -35,99 +12,65 @@
     <h2>Plant Sickness Detection</h2>
 
     <div class="action-buttons">
-      <!-- File Upload Input -->
+      <!-- File Upload Label -->
       <label for="fileInput" class="btn btn-secondary" id="fileLabel">
         Choose Image File
       </label>
+      <!-- Restrict accept types to prevent HEIC format crashes on iOS -->
       <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
 
-      <!-- Live Camera Controls -->
-      <button id="toggleCameraBtn" class="btn btn-secondary">Open Live Camera</button>
+      <!-- Camera Capture Label -->
+      <label for="cameraInput" class="btn btn-secondary" id="cameraLabel">
+        Take Picture
+      </label>
+      <input type="file" id="cameraInput" accept="image/jpeg,image/png" capture="environment">
     </div>
 
-    <!-- Live WebRTC Video View -->
-    <div id="cameraContainer" class="camera-container">
-      <video id="webcam" autoplay playsinline muted></video>
-      <button id="snapBtn" class="btn btn-primary" style="margin-top: 10px; width: 100%;">
-        📸 Take Snapshot
-      </button>
-    </div>
+    <button id="processBtn" class="btn btn-primary" style="display: none;">Process Image</button>
 
-    <!-- Processing Button -->
-    <button id="processBtn" class="btn btn-primary" style="display: none; margin-top: 10px;">
-      Process Image
-    </button>
-
-    <!-- Canvas output for Rust WASM result -->
     <div class="preview-container">
       <canvas id="canvasPreview" width="224" height="224" style="display:none;"></canvas>
     </div>
 
-    <div id="status" class="status-box">Select an image or open the camera to start.</div>
+    <div id="status" class="status-box">Select an image or take a photo to start.</div>
   </div>
 
   <script type="module">
     import init, { process_image_full, init_panic_hook } from './pkg/plant_sickness.js';
 
     async function run() {
-      // 1. Initialize WASM module and panic diagnostic hook
+      // Initialize WASM binary
       await init();
+      
+      // Initialize Panic Hook for clear console errors if WASM panics
       if (typeof init_panic_hook === 'function') {
         init_panic_hook();
       }
 
-      // DOM Elements
       const fileInput = document.getElementById('fileInput');
+      const cameraInput = document.getElementById('cameraInput');
       const fileLabel = document.getElementById('fileLabel');
-      const toggleCameraBtn = document.getElementById('toggleCameraBtn');
-      const cameraContainer = document.getElementById('cameraContainer');
-      const webcam = document.getElementById('webcam');
-      const snapBtn = document.getElementById('snapBtn');
+      const cameraLabel = document.getElementById('cameraLabel');
       const processBtn = document.getElementById('processBtn');
       const canvas = document.getElementById('canvasPreview');
       const ctx = canvas.getContext('2d');
       const status = document.getElementById('status');
 
       let selectedByteArray = null;
-      let activeStream = null;
 
-      // Stop active video stream
-      function stopCamera() {
-        if (activeStream) {
-          activeStream.getTracks().forEach(track => track.stop());
-          activeStream = null;
-        }
-        cameraContainer.style.display = 'none';
-        toggleCameraBtn.innerText = 'Open Live Camera';
-      }
+      async function handleFileSelect(file, isCamera = false) {
+        canvas.style.display = 'none';
 
-      // Start camera stream via WebRTC MediaDevices API
-      async function startCamera() {
-        try {
-          status.innerText = 'Requesting camera access...';
-          activeStream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'environment' }, // Back camera on mobile
-            audio: false
-          });
-
-          webcam.srcObject = activeStream;
-          cameraContainer.style.display = 'block';
-          toggleCameraBtn.innerText = 'Close Camera';
-          status.innerText = 'Camera active. Point at a plant and take a snapshot.';
-        } catch (err) {
-          status.innerText = 'Failed to access camera: ' + err.message;
-          console.error('Camera access error:', err);
-        }
-      }
-
-      // Handle file selection from filesystem
-      fileInput.addEventListener('change', async (e) => {
-        const file = e.target.files[0];
         if (!file) return;
 
-        stopCamera();
-        canvas.style.display = 'none';
-        fileLabel.innerText = file.name;
+        // Reset display labels
+        if (isCamera) {
+          cameraLabel.innerText = "Captured: Photo";
+          fileLabel.innerText = "Choose Image File";
+        } else {
+          fileLabel.innerText = file.name;
+          cameraLabel.innerText = "Take Picture";
+        }
 
         try {
           const buffer = await file.arrayBuffer();
@@ -135,54 +78,34 @@
           processBtn.style.display = 'block';
           status.innerText = 'Image loaded! Ready to process.';
         } catch (err) {
-          status.innerText = 'Error reading file: ' + err;
+          status.innerText = 'Failed to read image file.';
+          console.error(err);
+        }
+      }
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0], false);
         }
       });
 
-      // Toggle camera button listener
-      toggleCameraBtn.addEventListener('click', () => {
-        if (activeStream) {
-          stopCamera();
-        } else {
-          startCamera();
+      cameraInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0], true);
         }
       });
 
-      // Snapshot frame directly from video element
-      snapBtn.addEventListener('click', () => {
-        if (!activeStream || webcam.videoWidth === 0) return;
-
-        // Draw current video frame to a temporary offscreen canvas
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = webcam.videoWidth;
-        tempCanvas.height = webcam.videoHeight;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.drawImage(webcam, 0, 0, tempCanvas.width, tempCanvas.height);
-
-        // Export frame as JPEG Uint8Array bytes
-        tempCanvas.toBlob(async (blob) => {
-          if (!blob) return;
-          const buffer = await blob.arrayBuffer();
-          selectedByteArray = new Uint8Array(buffer);
-
-          status.innerText = 'Snapshot captured! Ready to process.';
-          processBtn.style.display = 'block';
-          stopCamera(); // Close stream after capturing frame
-        }, 'image/jpeg', 0.95);
-      });
-
-      // Execute Rust WASM pipeline on button click
       processBtn.addEventListener('click', () => {
         if (!selectedByteArray) return;
 
-        status.innerText = 'Processing image through Rust pipeline...';
+        status.innerText = 'Executing pipeline (Decoding -> EXIF -> Scaling -> Segmentation -> Normalization)...';
         processBtn.disabled = true;
 
         try {
-          // Pass image bytes and null filters to Rust WASM function
+          // FIX 1: Pass null for the second argument (Option<FilterOptions>)
           const result = process_image_full(selectedByteArray, null);
 
-          // Get RGBA pixel buffer slice
+          // FIX 2: Safely extract WebAssembly Uint8Array memory slice
           const rgbaBytes = result.rgba_bytes;
           const clampedArray = new Uint8ClampedArray(
             rgbaBytes.buffer,
@@ -190,15 +113,14 @@
             rgbaBytes.byteLength
           );
 
-          // Render output on 224x224 canvas
           const imageData = new ImageData(clampedArray, 224, 224);
           ctx.putImageData(imageData, 0, 0);
           canvas.style.display = 'block';
 
-          // Extract RGB Tensor
+          // Access Tensor array
           const normalizedTensor = result.normalized_tensor;
 
-          status.innerText = `Processing complete! Tensor Size: ${normalizedTensor.length} floats`;
+          status.innerText = `Processing complete! Tensor Size: ${normalizedTensor.length}`;
         } catch (err) {
           status.innerText = 'Error processing image: ' + err;
           console.error(err);
