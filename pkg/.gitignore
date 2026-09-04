@@ -1,4 +1,1 @@
-git add -f pkg/
-git add .
-git commit -m "Add compiled WASM pkg files for deployment"
-git push origin main
+*
