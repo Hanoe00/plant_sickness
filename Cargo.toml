@@ -4,12 +4,22 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-wasm-bindgen = "0.2.127"
+wasm-bindgen = "0.2.128"
 image = "0.25.10"
 kamadak-exif = "0.6.1"
+getrandom = { version = "0.4", features = ["wasm_js"] }
+burn = { version = "0.21.0", features = ["std"] }
+burn-ndarray = "0.21.0"
+burn-store = "0.21.0"
+zstd = { version = "0.14.0", default-features = false, features = ["wasm"] }
+
+[build-dependencies]
+burn-onnx = "0.21.0"
 
 [profile.release]
 lto = true
+
+[patch.crates-io]

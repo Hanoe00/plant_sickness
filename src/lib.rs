@@ -3,6 +3,18 @@ use image::{DynamicImage, RgbaImage, ImageReader};
 use std::io::Cursor;
 use exif;
 
+use burn::tensor::Tensor;
+use burn_ndarray::NdArray;
+
+// Implementacja wygenerowanego z ONNX modelu Burn
+mod model {
+    pub mod generated {
+        include!(concat!(env!("OUT_DIR"), "/model/plant_disease_model.rs"));
+    }
+}
+
+type Backend = NdArray<f32>;
+
 #[wasm_bindgen]
 pub struct ProcessedResult {
     rgba_bytes: Vec<u8>,
@@ -22,13 +34,13 @@ impl ProcessedResult {
     }
 }
 
-/// Filter options.
+/// Opcje filtrowania obrazu
 #[wasm_bindgen]
 pub struct FilterOptions {
-    pub contrast: f32,    // Range: -100.0 to 100.0 (0.0 = default)
-    pub brightness: i32,  // Range: -255 to 255 (0 = default)
-    pub blur_sigma: f32,  // Range: 0.0 to 10.0 (0.0 = no blur)
-    pub grayscale: bool,  // Convert to grayscale
+    pub contrast: f32,    // Zakres: -100.0 do 100.0 (0.0 = domyślne)
+    pub brightness: i32,  // Zakres: -255 do 255 (0 = domyślne)
+    pub blur_sigma: f32,  // Zakres: 0.0 do 10.0 (0.0 = brak rozmycia)
+    pub grayscale: bool,  // Konwersja do odcieni szarości
 }
 
 #[wasm_bindgen]
@@ -44,14 +56,14 @@ impl FilterOptions {
     }
 }
 
-/// Pipeline:
-/// Decoding -> EXIF Correction -> Filtering -> Resizing (224x224) -> Leaf Segmentation (HSV) -> Normalization
+/// Pipeline wstępnego przetwarzania obrazu:
+/// Dekodowanie -> Korekcja EXIF -> Filtrowanie -> Skalowanie (224x224) -> Segmentacja liścia (HSV) -> Normalizacja ImageNet
 #[wasm_bindgen]
 pub fn process_image_full(
     image_bytes: &[u8],
     filters: Option<FilterOptions>,
 ) -> Result<ProcessedResult, JsValue> {
-    // decoding and exif
+    // 1. Dekodowanie obrazu
     let reader = ImageReader::new(Cursor::new(image_bytes))
         .with_guessed_format()
         .map_err(|e| JsValue::from_str(&format!("Failed to guess image format: {}", e)))?;
@@ -60,26 +72,40 @@ pub fn process_image_full(
         .decode()
         .map_err(|e| JsValue::from_str(&format!("Failed to decode image bytes: {}", e)))?;
 
+    // 2. Korekcja EXIF
     img = apply_exif_orientation(image_bytes, img);
 
-    // adding filters to img
+    // 3. Filtry
     if let Some(opts) = filters {
         img = apply_image_filters(img, &opts);
     }
 
-    // image scaling
+    // 4. Skalowanie do wymiarów wejściowych sieci (224x224)
     let resized = img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
     let mut rgba_img = resized.to_rgba8();
 
-    // leaf segmentation
+    // 5. Segmentacja liścia w przestrzeni HSV
     segment_leaf_hsv(&mut rgba_img);
 
-    // normalisation of rgb 
-    let mut normalized_tensor = Vec::with_capacity(224 * 224 * 3);
-    for pixel in rgba_img.pixels() {
-        normalized_tensor.push((pixel[0] as f32) / 255.0);
-        normalized_tensor.push((pixel[1] as f32) / 255.0);
-        normalized_tensor.push((pixel[2] as f32) / 255.0);
+    // 6. Normalizacja i ułożenie w formacie NCHW (Planar RGB z uwzględnieniem ImageNet mean/std)
+    let mean = [0.485f32, 0.456, 0.406];
+    let std = [0.229f32, 0.224, 0.225];
+    let mut normalized_tensor = vec![0.0f32; 1 * 3 * 224 * 224];
+
+    for y in 0..224 {
+        for x in 0..224 {
+            let pixel = rgba_img.get_pixel(x, y);
+            let idx = (y * 224 + x) as usize;
+
+            let r = (pixel[0] as f32 / 255.0 - mean[0]) / std[0];
+            let g = (pixel[1] as f32 / 255.0 - mean[1]) / std[1];
+            let b = (pixel[2] as f32 / 255.0 - mean[2]) / std[2];
+
+            // Układ kanałów CHW: RRR... GGG... BBB...
+            normalized_tensor[0 * 224 * 224 + idx] = r;
+            normalized_tensor[1 * 224 * 224 + idx] = g;
+            normalized_tensor[2 * 224 * 224 + idx] = b;
+        }
     }
 
     Ok(ProcessedResult {
@@ -88,7 +114,40 @@ pub fn process_image_full(
     })
 }
 
-/// Applies image adjustments (Contrast, Brightness, Blur, Grayscale)
+/// Przekazuje wygenerowany tensor z `process_image_full` bezpośrednio do modelu Burn
+#[wasm_bindgen]
+pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
+    if normalized_tensor.len() != 1 * 3 * 224 * 224 {
+        return Err(JsValue::from_str(&format!(
+            "Invalid tensor length. Expected {}, got {}",
+            1 * 3 * 224 * 224,
+            normalized_tensor.len()
+        )));
+    }
+
+    // Inicjalizacja wygenerowanego z ONNX modelu
+    let model = model::generated::Model::<Backend>::default();
+
+    // Utworzenie tensora Burn o kształcie [1, 3, 224, 224]
+    let tensor_data = normalized_tensor.to_vec();
+    let input_tensor = Tensor::<Backend, 4>::from_data(
+        burn::tensor::TensorData::new(tensor_data, [1, 3, 224, 224]),
+        &Default::default(),
+    );
+
+    // Wykonanie inferencji
+    let output_logits = model.forward(input_tensor);
+
+    // Konwersja danych wyjściowych za pomocą nowego API Burn (.into_vec::<f32>())
+    let logits_vec: Vec<f32> = output_logits
+        .into_data()
+        .into_vec::<f32>()
+        .map_err(|e| JsValue::from_str(&format!("Failed to convert tensor data: {:?}", e)))?;
+
+    Ok(logits_vec)
+}
+
+/// Aplikuje modyfikacje obrazu (Kontrast, Jasność, Rozmycie, Odcienie szarości)
 fn apply_image_filters(mut img: DynamicImage, filters: &FilterOptions) -> DynamicImage {
     if filters.grayscale {
         img = img.grayscale();
@@ -105,7 +164,7 @@ fn apply_image_filters(mut img: DynamicImage, filters: &FilterOptions) -> Dynami
     img
 }
 
-/// HSV Thresholding for leaf region separation
+/// Progowanie HSV w celu wyizolowania obszaru liścia
 fn segment_leaf_hsv(img: &mut RgbaImage) {
     for pixel in img.pixels_mut() {
         let r = pixel[0] as f32 / 255.0;
@@ -123,7 +182,8 @@ fn segment_leaf_hsv(img: &mut RgbaImage) {
         }
     }
 }
-// transition to hsv
+
+/// Konwersja przestrzeni barw RGB na HSV
 fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -148,7 +208,8 @@ fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
 
     (h, s, v)
 }
-// exif corection
+
+/// Korekcja obrotu zdjęcia na podstawie metadanych EXIF
 fn apply_exif_orientation(raw_bytes: &[u8], img: DynamicImage) -> DynamicImage {
     let mut cursor = Cursor::new(raw_bytes);
     if let Ok(exif_data) = exif::Reader::new().read_from_container(&mut cursor) {
@@ -166,19 +227,18 @@ fn apply_exif_orientation(raw_bytes: &[u8], img: DynamicImage) -> DynamicImage {
     img
 }
 
-//tests
+// --- TESTY ---
 #[cfg(test)]
 mod tests {
     use super::*;
     use image::{ImageBuffer, Rgb};
 
-    /// Generates mock PNG byte stream for testing
     fn create_dummy_png_bytes(width: u32, height: u32) -> Vec<u8> {
         let img = ImageBuffer::from_fn(width, height, |x, _y| {
             if x % 2 == 0 {
-                Rgb([0u8, 200u8, 0u8]) // Green pixel (leaf)
+                Rgb([0u8, 200u8, 0u8])
             } else {
-                Rgb([200u8, 0u8, 0u8]) // Red pixel (non-leaf)
+                Rgb([200u8, 0u8, 0u8])
             }
         });
 
@@ -192,19 +252,16 @@ mod tests {
 
     #[test]
     fn test_rgb_to_hsv_primary_colors() {
-        // Pure Red
         let (h, s, v) = rgb_to_hsv(1.0, 0.0, 0.0);
         assert_eq!(h, 0.0);
         assert_eq!(s, 1.0);
         assert_eq!(v, 1.0);
 
-        // Pure Green
         let (h, s, v) = rgb_to_hsv(0.0, 1.0, 0.0);
         assert_eq!(h, 120.0);
         assert_eq!(s, 1.0);
         assert_eq!(v, 1.0);
 
-        // Pure Blue
         let (h, s, v) = rgb_to_hsv(0.0, 0.0, 1.0);
         assert_eq!(h, 240.0);
         assert_eq!(s, 1.0);
@@ -219,11 +276,8 @@ mod tests {
         assert!(result.is_ok());
         let res = result.unwrap();
 
-        // 224 x 224 pixels with RGBA (4 channels per pixel)
         assert_eq!(res.rgba_bytes().len(), 224 * 224 * 4);
-
-        // 224 x 224 pixels with RGB (3 float channels per pixel)
-        assert_eq!(res.normalized_tensor().len(), 224 * 224 * 3);
+        assert_eq!(res.normalized_tensor().len(), 1 * 3 * 224 * 224);
     }
 
     #[test]
@@ -235,24 +289,19 @@ mod tests {
 
         assert!(result.is_ok());
         let res = result.unwrap();
-        assert_eq!(res.normalized_tensor().len(), 224 * 224 * 3);
+        assert_eq!(res.normalized_tensor().len(), 1 * 3 * 224 * 224);
     }
 
     #[test]
     fn test_leaf_segmentation_hsv() {
         let mut img = RgbaImage::new(1, 2);
 
-        // Pixel 0: Green leaf-like color
         img.put_pixel(0, 0, image::Rgba([0, 200, 0, 255]));
-        // Pixel 1: Red background color
         img.put_pixel(0, 1, image::Rgba([200, 0, 0, 255]));
 
         segment_leaf_hsv(&mut img);
 
-        // Green pixel should remain unchanged
         assert_eq!(img.get_pixel(0, 0)[1], 200);
-
-        // Red pixel should be darkened (200 * 0.2 = 40)
         assert_eq!(img.get_pixel(0, 1)[0], 40);
     }
 }
