@@ -6,6 +6,13 @@ use exif;
 use burn::tensor::Tensor;
 use burn_ndarray::NdArray;
 
+// Inicjalizacja hooka do wyciągania stack trace paniki w konsoli browsera
+#[wasm_bindgen]
+pub fn init_panic_hook() {
+    #[cfg(feature = "console_error_panic_hook")]
+    console_error_panic_hook::set_once();
+}
+
 // Implementacja wygenerowanego z ONNX modelu Burn
 mod model {
     pub mod generated {
@@ -63,7 +70,7 @@ pub fn process_image_full(
     image_bytes: &[u8],
     filters: Option<FilterOptions>,
 ) -> Result<ProcessedResult, JsValue> {
-    //Dekodowanie obrazu
+    // Dekodowanie obrazu
     let reader = ImageReader::new(Cursor::new(image_bytes))
         .with_guessed_format()
         .map_err(|e| JsValue::from_str(&format!("Failed to guess image format: {}", e)))?;
@@ -72,22 +79,22 @@ pub fn process_image_full(
         .decode()
         .map_err(|e| JsValue::from_str(&format!("Failed to decode image bytes: {}", e)))?;
 
-    //Korekcja EXIF
+    // Korekcja EXIF
     img = apply_exif_orientation(image_bytes, img);
 
-    //Filtry
+    // Filtry
     if let Some(opts) = filters {
         img = apply_image_filters(img, &opts);
     }
 
-    //Skalowanie do wymiarów wejściowych sieci (224x224)
+    // Skalowanie do wymiarów wejściowych sieci (224x224)
     let resized = img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
     let mut rgba_img = resized.to_rgba8();
 
-    //Segmentacja liścia w przestrzeni HSV
+    // Segmentacja liścia w przestrzeni HSV
     segment_leaf_hsv(&mut rgba_img);
 
-    //Normalizacja i ułożenie w formacie NCHW
+    // Normalizacja i ułożenie w formacie NCHW
     let mean = [0.485f32, 0.456, 0.406];
     let std = [0.229f32, 0.224, 0.225];
     let mut normalized_tensor = vec![0.0f32; 1 * 3 * 224 * 224];
@@ -185,7 +192,7 @@ fn segment_leaf_hsv(img: &mut RgbaImage) {
     }
 }
 
-/// Konwersja przestrzeni barw RGB na HSV
+/// Konwersja przestrzeni barw RGB na HSV (Poprawiona dla podziału przez 0)
 fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
@@ -194,9 +201,12 @@ fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let v = max;
     let s = if max == 0.0 { 0.0 } else { delta / max };
 
-    let mut h = if delta == 0.0 {
-        0.0
-    } else if max == r {
+    // Jeśli delta jest równa 0 (szarości, czerń, biel), odcień (H) wynosi 0.
+    if delta == 0.0 {
+        return (0.0, s, v);
+    }
+
+    let mut h = if max == r {
         60.0 * (((g - b) / delta) % 6.0)
     } else if max == g {
         60.0 * (((b - r) / delta) + 2.0)
@@ -229,7 +239,7 @@ fn apply_exif_orientation(raw_bytes: &[u8], img: DynamicImage) -> DynamicImage {
     img
 }
 
-//TESTY 
+// TESTY 
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,6 +278,14 @@ mod tests {
         assert_eq!(h, 240.0);
         assert_eq!(s, 1.0);
         assert_eq!(v, 1.0);
+    }
+
+    #[test]
+    fn test_rgb_to_hsv_grayscale_no_panic() {
+        let (h, s, v) = rgb_to_hsv(0.5, 0.5, 0.5);
+        assert_eq!(h, 0.0);
+        assert_eq!(s, 0.0);
+        assert_eq!(v, 0.5);
     }
 
     #[test]

@@ -2,6 +2,28 @@
 /* eslint-disable */
 
 /**
+ * Chroma subsampling format
+ */
+export enum ChromaSampling {
+    /**
+     * Both vertically and horizontally subsampled.
+     */
+    Cs420 = 0,
+    /**
+     * Horizontally subsampled.
+     */
+    Cs422 = 1,
+    /**
+     * Not subsampled.
+     */
+    Cs444 = 2,
+    /**
+     * Monochrome.
+     */
+    Cs400 = 3,
+}
+
+/**
  * Opcje filtrowania obrazu
  */
 export class FilterOptions {
@@ -21,6 +43,8 @@ export class ProcessedResult {
     readonly normalized_tensor: Float32Array;
     readonly rgba_bytes: Uint8Array;
 }
+
+export function init_panic_hook(): void;
 
 export function predict_disease(normalized_tensor: Float32Array): Float32Array;
 
@@ -45,6 +69,7 @@ export interface InitOutput {
     readonly __wbg_set_filteroptions_contrast: (a: number, b: number) => void;
     readonly __wbg_set_filteroptions_grayscale: (a: number, b: number) => void;
     readonly filteroptions_new: (a: number, b: number, c: number, d: number) => number;
+    readonly init_panic_hook: () => void;
     readonly predict_disease: (a: number, b: number) => [number, number, number, number];
     readonly process_image_full: (a: number, b: number, c: number) => [number, number, number];
     readonly processedresult_normalized_tensor: (a: number) => [number, number];

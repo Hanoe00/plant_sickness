@@ -12,6 +12,7 @@ export const __wbg_set_filteroptions_brightness: (a: number, b: number) => void;
 export const __wbg_set_filteroptions_contrast: (a: number, b: number) => void;
 export const __wbg_set_filteroptions_grayscale: (a: number, b: number) => void;
 export const filteroptions_new: (a: number, b: number, c: number, d: number) => number;
+export const init_panic_hook: () => void;
 export const predict_disease: (a: number, b: number) => [number, number, number, number];
 export const process_image_full: (a: number, b: number, c: number) => [number, number, number];
 export const processedresult_normalized_tensor: (a: number) => [number, number];
