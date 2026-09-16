@@ -38,7 +38,7 @@
   </div>
 
   <script type="module">
-    import init, { process_image_full, predict_disease } from './pkg/plant_sickness.js';
+    import init, { process_image_full, predict_disease, init_panic_hook } from './pkg/plant_sickness.js';
     import { DISEASE_LABELS, DIAGNOSIS_DATA } from './diagnosisData.js';
 
     function softmax(logits) {
@@ -103,11 +103,11 @@
     async function run() {
       // Initialize WASM binary
       await init('./pkg/plant_sickness_bg.wasm');
-      
+
       // Initialize Panic Hook for clear console errors if WASM panics
-      //if (typeof init_panic_hook === 'function') {
-       // init_panic_hook();
-      //}
+      if (typeof init_panic_hook === 'function') {
+        init_panic_hook();
+      }
 
       const fileInput = document.getElementById('fileInput');
       const cameraInput = document.getElementById('cameraInput');
@@ -120,39 +120,51 @@
 
       let selectedByteArray = null;
 
+      // Safely process selected files
       async function handleFileSelect(file, isCamera = false) {
+        status.innerText = 'Loading image...';
         canvas.style.display = 'none';
 
-        if (!file) return;
+        if (!file) {
+          status.innerText = 'No file selected.';
+          return;
+        }
 
-        // Reset display labels
+        console.log("Selected file:", file.name, file.type, file.size);
+
         if (isCamera) {
           cameraLabel.innerText = "Captured: Photo";
           fileLabel.innerText = "Choose Image File";
         } else {
-          fileLabel.innerText = file.name;
+          fileLabel.innerText = file.name || "Image Selected";
           cameraLabel.innerText = "Take Picture";
         }
 
         try {
           const buffer = await file.arrayBuffer();
           selectedByteArray = new Uint8Array(buffer);
+          
           processBtn.style.display = 'block';
-          status.innerText = 'Image loaded! Ready to process.';
+          processBtn.disabled = false;
+          status.innerText = 'Image loaded! Tap "Process Image" below.';
         } catch (err) {
-          status.innerText = 'Failed to read image file.';
-          console.error(err);
+          status.innerText = 'Failed to read image: ' + err.message;
+          console.error("Error reading file:", err);
         }
       }
 
+      // Reset value on click so selecting the same file twice triggers 'change'
+      fileInput.addEventListener('click', (e) => { e.target.value = null; });
+      cameraInput.addEventListener('click', (e) => { e.target.value = null; });
+
       fileInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
+        if (e.target.files && e.target.files.length > 0) {
           handleFileSelect(e.target.files[0], false);
         }
       });
 
       cameraInput.addEventListener('change', (e) => {
-        if (e.target.files.length > 0) {
+        if (e.target.files && e.target.files.length > 0) {
           handleFileSelect(e.target.files[0], true);
         }
       });
@@ -163,47 +175,42 @@
         status.innerText = 'Executing pipeline (Decoding -> EXIF -> Scaling -> Segmentation -> Normalization)...';
         processBtn.disabled = true;
 
-        try {
-          
-          const result = process_image_full(selectedByteArray, null);
+        // Allow UI to refresh before CPU-heavy WASM starts
+        setTimeout(() => {
+          try {
+            const result = process_image_full(selectedByteArray, null);
 
-          
-          const rgbaBytes = result.rgba_bytes;
-          const clampedArray = new Uint8ClampedArray(
-            rgbaBytes.buffer,
-            rgbaBytes.byteOffset,
-            rgbaBytes.byteLength
-          );
+            // Copy bytes out of WASM heap safely to prevent detached buffer crash
+            const rgbaBytes = result.rgba_bytes;
+            const clampedArray = new Uint8ClampedArray(rgbaBytes);
 
-          const imageData = new ImageData(clampedArray, 224, 224);
-          ctx.putImageData(imageData, 0, 0);
-          canvas.style.display = 'block';
+            const imageData = new ImageData(clampedArray, 224, 224);
+            ctx.putImageData(imageData, 0, 0);
+            canvas.style.display = 'block';
 
-          // Access Tensor array
-          const normalizedTensor = result.normalized_tensor;
+            // Predict raw logits from WASM
+            const normalizedTensor = result.normalized_tensor;
+            const logits = predict_disease(normalizedTensor);
 
-          // Predict raw logits from WASM
-          const logits = predict_disease(normalizedTensor);
+            // Find predicted class index (ArgMax)
+            const maxLogit = Math.max(...logits);
+            const predictedIndex = logits.indexOf(maxLogit);
+            const diseaseKey = DISEASE_LABELS[predictedIndex];
 
-          // Find predicted class index (ArgMax)
-          const maxLogit = Math.max(...logits);
-          const predictedIndex = logits.indexOf(maxLogit);
-          const diseaseKey = DISEASE_LABELS[predictedIndex];
+            // Softmax
+            const probabilities = softmax(logits);
+            const confidence = (probabilities[predictedIndex] * 100).toFixed(1);
 
-          // Convert logits to confidence percentage via Softmax
-          const probabilities = softmax(logits);
-          const confidence = (probabilities[predictedIndex] * 100).toFixed(1);
-
-          // Render diagnosis result to UI
-          displayDiagnosis(diseaseKey, confidence);
-
-          status.innerText = `Processing complete!`;
-        } catch (err) {
-          status.innerText = 'Error processing image: ' + err;
-          console.error(err);
-        } finally {
-          processBtn.disabled = false;
-        }
+            // Render UI
+            displayDiagnosis(diseaseKey, confidence);
+            status.innerText = `Processing complete!`;
+          } catch (err) {
+            status.innerText = 'Error processing image: ' + err;
+            console.error("Error running inference:", err);
+          } finally {
+            processBtn.disabled = false;
+          }
+        }, 50);
       });
     }
 
