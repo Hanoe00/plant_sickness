@@ -56,14 +56,14 @@ impl FilterOptions {
     }
 }
 
-/// Pipeline wstępnego przetwarzania obrazu:
+/// Pipeline przetwarzania obrazu:
 /// Dekodowanie -> Korekcja EXIF -> Filtrowanie -> Skalowanie (224x224) -> Segmentacja liścia (HSV) -> Normalizacja ImageNet
 #[wasm_bindgen]
 pub fn process_image_full(
     image_bytes: &[u8],
     filters: Option<FilterOptions>,
 ) -> Result<ProcessedResult, JsValue> {
-    // 1. Dekodowanie obrazu
+    //Dekodowanie obrazu
     let reader = ImageReader::new(Cursor::new(image_bytes))
         .with_guessed_format()
         .map_err(|e| JsValue::from_str(&format!("Failed to guess image format: {}", e)))?;
@@ -72,22 +72,22 @@ pub fn process_image_full(
         .decode()
         .map_err(|e| JsValue::from_str(&format!("Failed to decode image bytes: {}", e)))?;
 
-    // 2. Korekcja EXIF
+    //Korekcja EXIF
     img = apply_exif_orientation(image_bytes, img);
 
-    // 3. Filtry
+    //Filtry
     if let Some(opts) = filters {
         img = apply_image_filters(img, &opts);
     }
 
-    // 4. Skalowanie do wymiarów wejściowych sieci (224x224)
+    //Skalowanie do wymiarów wejściowych sieci (224x224)
     let resized = img.resize_exact(224, 224, image::imageops::FilterType::Lanczos3);
     let mut rgba_img = resized.to_rgba8();
 
-    // 5. Segmentacja liścia w przestrzeni HSV
+    //Segmentacja liścia w przestrzeni HSV
     segment_leaf_hsv(&mut rgba_img);
 
-    // 6. Normalizacja i ułożenie w formacie NCHW (Planar RGB z uwzględnieniem ImageNet mean/std)
+    //Normalizacja i ułożenie w formacie NCHW
     let mean = [0.485f32, 0.456, 0.406];
     let std = [0.229f32, 0.224, 0.225];
     let mut normalized_tensor = vec![0.0f32; 1 * 3 * 224 * 224];
@@ -114,7 +114,7 @@ pub fn process_image_full(
     })
 }
 
-/// Przekazuje wygenerowany tensor z `process_image_full` bezpośrednio do modelu Burn
+// Przekazanie wygenerowanego tensora z `process_image_full` bezpośrednio do modelu Burn
 #[wasm_bindgen]
 pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     if normalized_tensor.len() != 1 * 3 * 224 * 224 {
@@ -128,7 +128,7 @@ pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     // Inicjalizacja wygenerowanego z ONNX modelu
     let model = model::generated::Model::<Backend>::default();
 
-    // Utworzenie tensora Burn o kształcie [1, 3, 224, 224]
+    // Utworzenie tensora Burn
     let tensor_data = normalized_tensor.to_vec();
     let input_tensor = Tensor::<Backend, 4>::from_data(
         burn::tensor::TensorData::new(tensor_data, [1, 3, 224, 224]),
@@ -138,7 +138,7 @@ pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     // Wykonanie inferencji
     let output_logits = model.forward(input_tensor);
 
-    // Konwersja danych wyjściowych za pomocą nowego API Burn (.into_vec::<f32>())
+    // Konwersja danych wyjściowych za pomocą API Burn
     let logits_vec: Vec<f32> = output_logits
         .into_data()
         .into_vec::<f32>()
@@ -147,7 +147,7 @@ pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     Ok(logits_vec)
 }
 
-/// Aplikuje modyfikacje obrazu (Kontrast, Jasność, Rozmycie, Odcienie szarości)
+/// Aplikacja modyfikacji obrazu (Kontrast, Jasność, Rozmycie, Odcienie szarości)
 fn apply_image_filters(mut img: DynamicImage, filters: &FilterOptions) -> DynamicImage {
     if filters.grayscale {
         img = img.grayscale();
@@ -209,7 +209,7 @@ fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     (h, s, v)
 }
 
-/// Korekcja obrotu zdjęcia na podstawie metadanych EXIF
+/// Korekcja obrotu zdjęcia
 fn apply_exif_orientation(raw_bytes: &[u8], img: DynamicImage) -> DynamicImage {
     let mut cursor = Cursor::new(raw_bytes);
     if let Ok(exif_data) = exif::Reader::new().read_from_container(&mut cursor) {
@@ -227,7 +227,7 @@ fn apply_exif_orientation(raw_bytes: &[u8], img: DynamicImage) -> DynamicImage {
     img
 }
 
-// --- TESTY ---
+//TESTY 
 #[cfg(test)]
 mod tests {
     use super::*;

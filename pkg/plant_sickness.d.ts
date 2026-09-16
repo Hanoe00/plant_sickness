@@ -2,7 +2,7 @@
 /* eslint-disable */
 
 /**
- * Filter options.
+ * Opcje filtrowania obrazu
  */
 export class FilterOptions {
     free(): void;
@@ -22,9 +22,11 @@ export class ProcessedResult {
     readonly rgba_bytes: Uint8Array;
 }
 
+export function predict_disease(normalized_tensor: Float32Array): Float32Array;
+
 /**
- * Pipeline:
- * Decoding -> EXIF Correction -> Filtering -> Resizing (224x224) -> Leaf Segmentation (HSV) -> Normalization
+ * Pipeline przetwarzania obrazu:
+ * Dekodowanie -> Korekcja EXIF -> Filtrowanie -> Skalowanie (224x224) -> Segmentacja liścia (HSV) -> Normalizacja ImageNet
  */
 export function process_image_full(image_bytes: Uint8Array, filters?: FilterOptions | null): ProcessedResult;
 
@@ -43,9 +45,20 @@ export interface InitOutput {
     readonly __wbg_set_filteroptions_contrast: (a: number, b: number) => void;
     readonly __wbg_set_filteroptions_grayscale: (a: number, b: number) => void;
     readonly filteroptions_new: (a: number, b: number, c: number, d: number) => number;
+    readonly predict_disease: (a: number, b: number) => [number, number, number, number];
     readonly process_image_full: (a: number, b: number, c: number) => [number, number, number];
     readonly processedresult_normalized_tensor: (a: number) => [number, number];
     readonly processedresult_rgba_bytes: (a: number) => [number, number];
+    readonly rust_zstd_wasm_shim_calloc: (a: number, b: number) => number;
+    readonly rust_zstd_wasm_shim_free: (a: number) => void;
+    readonly rust_zstd_wasm_shim_malloc: (a: number) => number;
+    readonly rust_zstd_wasm_shim_memcmp: (a: number, b: number, c: number) => number;
+    readonly rust_zstd_wasm_shim_memcpy: (a: number, b: number, c: number) => number;
+    readonly rust_zstd_wasm_shim_memmove: (a: number, b: number, c: number) => number;
+    readonly rust_zstd_wasm_shim_memset: (a: number, b: number, c: number) => number;
+    readonly rust_zstd_wasm_shim_qsort: (a: number, b: number, c: number, d: number) => void;
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __externref_table_dealloc: (a: number) => void;

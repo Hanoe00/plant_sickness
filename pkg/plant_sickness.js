@@ -1,7 +1,7 @@
 /* @ts-self-types="./plant_sickness.d.ts" */
 
 /**
- * Filter options.
+ * Opcje filtrowania obrazu
  */
 export class FilterOptions {
     __destroy_into_raw() {
@@ -120,8 +120,24 @@ export class ProcessedResult {
 if (Symbol.dispose) ProcessedResult.prototype[Symbol.dispose] = ProcessedResult.prototype.free;
 
 /**
- * Pipeline:
- * Decoding -> EXIF Correction -> Filtering -> Resizing (224x224) -> Leaf Segmentation (HSV) -> Normalization
+ * @param {Float32Array} normalized_tensor
+ * @returns {Float32Array}
+ */
+export function predict_disease(normalized_tensor) {
+    const ptr0 = passArrayF32ToWasm0(normalized_tensor, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.predict_disease(ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayF32FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 4, 4);
+    return v2;
+}
+
+/**
+ * Pipeline przetwarzania obrazu:
+ * Dekodowanie -> Korekcja EXIF -> Filtrowanie -> Skalowanie (224x224) -> Segmentacja liścia (HSV) -> Normalizacja ImageNet
  * @param {Uint8Array} image_bytes
  * @param {FilterOptions | null} [filters]
  * @returns {ProcessedResult}
@@ -146,6 +162,9 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_5d9e815e6fdf150f: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
+        __wbg_getRandomValues_436a51d0629d84e1: function() { return handleError(function (arg0, arg1) {
+            globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
+        }, arguments); },
         __wbindgen_generic_0000000000000001: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
@@ -173,6 +192,12 @@ const FilterOptionsFinalization = (typeof FinalizationRegistry === 'undefined')
 const ProcessedResultFinalization = (typeof FinalizationRegistry === 'undefined')
     ? { register: () => {}, unregister: () => {} }
     : new FinalizationRegistry(ptr => wasm.__wbg_processedresult_free(ptr, 1));
+
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_externrefs.set(idx, obj);
+    return idx;
+}
 
 function _assertClass(instance, klass) {
     if (!(instance instanceof klass)) {
@@ -210,6 +235,15 @@ function getUint8ArrayMemory0() {
     return cachedUint8ArrayMemory0;
 }
 
+function handleError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_exn_store(idx);
+    }
+}
+
 function isLikeNone(x) {
     return x === undefined || x === null;
 }
@@ -217,6 +251,13 @@ function isLikeNone(x) {
 function passArray8ToWasm0(arg, malloc) {
     const ptr = malloc(arg.length * 1, 1) >>> 0;
     getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
+function passArrayF32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getFloat32ArrayMemory0().set(arg, ptr / 4);
     WASM_VECTOR_LEN = arg.length;
     return ptr;
 }
