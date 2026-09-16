@@ -33,10 +33,72 @@
     </div>
 
     <div id="status" class="status-box">Select an image or take a photo to start.</div>
+    
+    <div id="diagnosis-container"></div>
   </div>
 
   <script type="module">
-    import init, { process_image_full} from './pkg/plant_sickness.js';
+    import init, { process_image_full, predict_disease } from './pkg/plant_sickness.js';
+    import { DISEASE_LABELS, DIAGNOSIS_DATA } from './diagnosisData.js';
+
+    function softmax(logits) {
+      const maxLogit = Math.max(...logits);
+      const exps = logits.map(x => Math.exp(x - maxLogit));
+      const sumExps = exps.reduce((a, b) => a + b, 0);
+      return exps.map(x => x / sumExps);
+    }
+
+    function displayDiagnosis(diseaseKey, confidence) {
+      const container = document.getElementById("diagnosis-container");
+      const numericConfidence = parseFloat(confidence);
+
+      // Low confidence warning (< 50%)
+      if (numericConfidence < 50.0) {
+        const readableName = diseaseKey ? diseaseKey.replace(/___/g, ' - ') : 'Unknown';
+        container.innerHTML = `
+          <div class="diagnosis-card unknown">
+            <h2>⚠️ Low Confidence Prediction (${confidence}%)</h2>
+            <p class="description">
+              The model isn't confident enough to make an accurate diagnosis. 
+              The top guess was <strong>${readableName}</strong>, but the probability is low.
+            </p>
+            <h3>Recommendations:</h3>
+            <ul>
+              <li>Ensure the leaf is clearly visible and centered in the frame.</li>
+              <li>Take a photo with better lighting and avoid sharp shadows.</li>
+              <li>Try focusing closely on an individual leaf showing visible symptoms.</li>
+            </ul>
+          </div>
+        `;
+        return;
+      }
+
+      // High confidence prediction (>= 50%)
+      const info = DIAGNOSIS_DATA[diseaseKey] || {
+        name: "Unknown Condition",
+        status: "unknown",
+        description: "Unable to classify the specific leaf sickness.",
+        symptoms: [],
+        treatment: []
+      };
+
+      container.innerHTML = `
+        <div class="diagnosis-card ${info.status}">
+          <h2>${info.name} <span class="confidence">(${confidence}% confidence)</span></h2>
+          <p class="description">${info.description}</p>
+          
+          <h3>Symptoms Detected:</h3>
+          <ul>
+            ${info.symptoms.map(s => `<li>${s}</li>`).join('')}
+          </ul>
+
+          <h3>Recommended Treatment:</h3>
+          <ul>
+            ${info.treatment.map(t => `<li>${t}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+    }
 
     async function run() {
       // Initialize WASM binary
@@ -119,6 +181,21 @@
 
           // Access Tensor array
           const normalizedTensor = result.normalized_tensor;
+
+          // Predict raw logits from WASM
+          const logits = predict_disease(normalizedTensor);
+
+          // Find predicted class index (ArgMax)
+          const maxLogit = Math.max(...logits);
+          const predictedIndex = logits.indexOf(maxLogit);
+          const diseaseKey = DISEASE_LABELS[predictedIndex];
+
+          // Convert logits to confidence percentage via Softmax
+          const probabilities = softmax(logits);
+          const confidence = (probabilities[predictedIndex] * 100).toFixed(1);
+
+          // Render diagnosis result to UI
+          displayDiagnosis(diseaseKey, confidence);
 
           status.innerText = `Processing complete!`;
         } catch (err) {

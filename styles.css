@@ -135,3 +135,76 @@ input[type="file"] {
   justify-content: center;
   word-break: break-word;
 }
+
+/* Diagnosis Results Card Styling*/
+
+.diagnosis-card {
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: 8px;
+  background-color: #f9fbf9;
+  border: 1px solid #e2e8f0;
+  border-left: 5px solid #2e7d32;
+  text-align: left;
+}
+
+.diagnosis-card.diseased {
+  border-left-color: #e74c3c;
+  background-color: #fff9f9;
+}
+
+.diagnosis-card.healthy {
+  border-left-color: #2ecc71;
+  background-color: #f4fbf7;
+}
+
+.diagnosis-card.unknown {
+  border-left-color: #e67e22;
+  background-color: #fff8f0;
+}
+
+.diagnosis-card h2 {
+  font-size: 1.2rem;
+  color: #2c3e50;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.diagnosis-card.unknown h2 {
+  color: #d35400;
+}
+
+.confidence {
+  font-size: 0.85rem;
+  color: #64748b;
+  font-weight: normal;
+}
+
+.diagnosis-card .description {
+  font-size: 0.9rem;
+  color: #475569;
+  line-height: 1.4;
+  margin-bottom: 14px;
+}
+
+.diagnosis-card h3 {
+  font-size: 0.95rem;
+  color: #1e293b;
+  margin: 12px 0 6px 0;
+}
+
+.diagnosis-card ul {
+  margin: 0 0 10px 0;
+  padding-left: 20px;
+  font-size: 0.88rem;
+  color: #334155;
+}
+
+.diagnosis-card li {
+  margin-bottom: 4px;
+  line-height: 1.35;
+}

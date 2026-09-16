@@ -173,8 +173,10 @@ fn segment_leaf_hsv(img: &mut RgbaImage) {
 
         let (h, s, v) = rgb_to_hsv(r, g, b);
 
-        let is_leaf = (h >= 25.0 && h <= 160.0) && (s >= 0.15) && (v >= 0.15);
+        let is_green_or_brown = (h >= 10.0 && h <= 160.0) && (s >= 0.10) && (v >= 0.05);
+        let is_dark_lesion = (v >= 0.03 && v <= 0.35) && (g >= b); // Ciemne zmiany zachowujące lekki odcień liścia
 
+        let is_leaf = is_green_or_brown || is_dark_lesion;
         if !is_leaf {
             pixel[0] = (pixel[0] as f32 * 0.2) as u8;
             pixel[1] = (pixel[1] as f32 * 0.2) as u8;
