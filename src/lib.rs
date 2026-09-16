@@ -9,6 +9,7 @@ use burn_ndarray::NdArray;
 // Inicjalizacja hooka do wyciągania stack trace paniki w konsoli browsera
 #[wasm_bindgen]
 pub fn init_panic_hook() {
+    #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
 }
 
@@ -69,6 +70,10 @@ pub fn process_image_full(
     image_bytes: &[u8],
     filters: Option<FilterOptions>,
 ) -> Result<ProcessedResult, JsValue> {
+    // Ustawienie hooka paniki
+    #[cfg(feature = "console_error_panic_hook")]
+    console_error_panic_hook::set_once();
+
     // Dekodowanie obrazu
     let reader = ImageReader::new(Cursor::new(image_bytes))
         .with_guessed_format()
@@ -93,10 +98,11 @@ pub fn process_image_full(
     // Segmentacja liścia w przestrzeni HSV
     segment_leaf_hsv(&mut rgba_img);
 
-    // Normalizacja i ułożenie w formacie NCHW
+    // Normalizacja i ułożenie w formacie NCHW (1x3x224x224)
     let mean = [0.485f32, 0.456, 0.406];
     let std = [0.229f32, 0.224, 0.225];
-    let mut normalized_tensor = vec![0.0f32; 1 * 3 * 224 * 224];
+    let plane_size = 224 * 224;
+    let mut normalized_tensor = vec![0.0f32; 3 * plane_size];
 
     for y in 0..224 {
         for x in 0..224 {
@@ -107,10 +113,10 @@ pub fn process_image_full(
             let g = (pixel[1] as f32 / 255.0 - mean[1]) / std[1];
             let b = (pixel[2] as f32 / 255.0 - mean[2]) / std[2];
 
-            // Układ kanałów CHW: RRR... GGG... BBB...
-            normalized_tensor[0 * 224 * 224 + idx] = r;
-            normalized_tensor[1 * 224 * 224 + idx] = g;
-            normalized_tensor[2 * 224 * 224 + idx] = b;
+            // Układ kanałów CHW: Red plane | Green plane | Blue plane
+            normalized_tensor[idx] = r;
+            normalized_tensor[plane_size + idx] = g;
+            normalized_tensor[2 * plane_size + idx] = b;
         }
     }
 
@@ -135,9 +141,9 @@ pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     let model = model::generated::Model::<Backend>::default();
 
     // Utworzenie tensora Burn
-    let tensor_data = normalized_tensor.to_vec();
+    let tensor_data = burn::tensor::TensorData::new(normalized_tensor.to_vec(), [1, 3, 224, 224]);
     let input_tensor = Tensor::<Backend, 4>::from_data(
-        burn::tensor::TensorData::new(tensor_data, [1, 3, 224, 224]),
+        tensor_data,
         &Default::default(),
     );
 
