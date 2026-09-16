@@ -9,7 +9,6 @@ use burn_ndarray::NdArray;
 // Inicjalizacja hooka do wyciągania stack trace paniki w konsoli browsera
 #[wasm_bindgen]
 pub fn init_panic_hook() {
-    #[cfg(feature = "console_error_panic_hook")]
     console_error_panic_hook::set_once();
 }
 
@@ -70,8 +69,7 @@ pub fn process_image_full(
     image_bytes: &[u8],
     filters: Option<FilterOptions>,
 ) -> Result<ProcessedResult, JsValue> {
-    // Ustawienie hooka paniki
-    #[cfg(feature = "console_error_panic_hook")]
+    // Ustawienie hooka paniki dla logowania bledow w konsoli
     console_error_panic_hook::set_once();
 
     // Dekodowanie obrazu
@@ -129,6 +127,8 @@ pub fn process_image_full(
 // Przekazanie wygenerowanego tensora z `process_image_full` bezpośrednio do modelu Burn
 #[wasm_bindgen]
 pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
+    console_error_panic_hook::set_once();
+
     if normalized_tensor.len() != 1 * 3 * 224 * 224 {
         return Err(JsValue::from_str(&format!(
             "Invalid tensor length. Expected {}, got {}",
@@ -206,7 +206,6 @@ fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let v = max;
     let s = if max == 0.0 { 0.0 } else { delta / max };
 
-    // Jeśli delta jest równa 0 (szarości, czerń, biel), odcień (H) wynosi 0.
     if delta == 0.0 {
         return (0.0, s, v);
     }
