@@ -24,7 +24,7 @@ export enum ChromaSampling {
 }
 
 /**
- * Opcje filtrowania obrazu
+ * Image filtering configuration
  */
 export class FilterOptions {
     free(): void;
@@ -46,11 +46,14 @@ export class ProcessedResult {
 
 export function init_panic_hook(): void;
 
+/**
+ * Runs inference on the normalized tensor using the embedded Burn model
+ */
 export function predict_disease(normalized_tensor: Float32Array): Float32Array;
 
 /**
- * Pipeline przetwarzania obrazu:
- * Dekodowanie -> Korekcja EXIF -> Filtrowanie -> Skalowanie (224x224) -> Segmentacja liścia (HSV) -> Normalizacja ImageNet
+ * Image processing pipeline:
+ * Decode -> EXIF Orientation -> Filters -> Resize (224x224) -> HSV Leaf Segmentation -> ImageNet Normalization
  */
 export function process_image_full(image_bytes: Uint8Array, filters?: FilterOptions | null): ProcessedResult;
 

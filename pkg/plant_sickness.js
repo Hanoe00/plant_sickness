@@ -24,7 +24,7 @@ export const ChromaSampling = Object.freeze({
 });
 
 /**
- * Opcje filtrowania obrazu
+ * Image filtering configuration
  */
 export class FilterOptions {
     __destroy_into_raw() {
@@ -147,6 +147,7 @@ export function init_panic_hook() {
 }
 
 /**
+ * Runs inference on the normalized tensor using the embedded Burn model
  * @param {Float32Array} normalized_tensor
  * @returns {Float32Array}
  */
@@ -163,8 +164,8 @@ export function predict_disease(normalized_tensor) {
 }
 
 /**
- * Pipeline przetwarzania obrazu:
- * Dekodowanie -> Korekcja EXIF -> Filtrowanie -> Skalowanie (224x224) -> Segmentacja liścia (HSV) -> Normalizacja ImageNet
+ * Image processing pipeline:
+ * Decode -> EXIF Orientation -> Filters -> Resize (224x224) -> HSV Leaf Segmentation -> ImageNet Normalization
  * @param {Uint8Array} image_bytes
  * @param {FilterOptions | null} [filters]
  * @returns {ProcessedResult}

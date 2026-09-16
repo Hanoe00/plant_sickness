@@ -19,6 +19,7 @@ console_error_panic_hook = "0.1.7"
 
 [build-dependencies]
 burn-onnx = "0.21.0"
+burn-import = { version = "0.21.0", features = ["onnx"] }
 
 [profile.release]
 opt-level = "z"
