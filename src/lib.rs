@@ -138,9 +138,6 @@ pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     }
 
     // Initialize backend device
-    //let device = Default::default();
-
-   // Initialize backend device
     let device = Default::default();
 
     // Instantiate the model directly using the device
@@ -153,13 +150,20 @@ pub fn predict_disease(normalized_tensor: &[f32]) -> Result<Vec<f32>, JsValue> {
     // Forward pass
     let output_logits = model.forward(input_tensor);
 
+    // Select correct softmax axis based on output dimensions
+    let dims = output_logits.dims();
+    let softmax_axis = if dims.len() > 1 { 1 } else { 0 };
+
+    // Convert raw logits to probabilities via Softmax along class axis
+    let probabilities = burn::tensor::activation::softmax(output_logits, softmax_axis);
+
     // Extract output vector
-    let logits_vec: Vec<f32> = output_logits
+    let probs_vec: Vec<f32> = probabilities
         .into_data()
         .into_vec::<f32>()
         .map_err(|e| JsValue::from_str(&format!("Failed to convert tensor data: {:?}", e)))?;
 
-    Ok(logits_vec)
+    Ok(probs_vec)
 }
 
 fn apply_image_filters(mut img: DynamicImage, filters: &FilterOptions) -> DynamicImage {
@@ -180,20 +184,29 @@ fn apply_image_filters(mut img: DynamicImage, filters: &FilterOptions) -> Dynami
 
 fn segment_leaf_hsv(img: &mut RgbaImage) {
     for pixel in img.pixels_mut() {
-        let r = pixel[0] as f32 / 255.0;
-        let g = pixel[1] as f32 / 255.0;
-        let b = pixel[2] as f32 / 255.0;
+        let r = pixel[0] as f32;
+        let g = pixel[1] as f32;
+        let b = pixel[2] as f32;
 
-        let (h, s, v) = rgb_to_hsv(r, g, b);
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let chroma = max - min;
 
-        let is_green_or_brown = (h >= 10.0 && h <= 160.0) && (s >= 0.10) && (v >= 0.05);
-        let is_dark_lesion = (v >= 0.03 && v <= 0.35) && (g >= b);
+        // Leaf greens: green channel dominant
+        let is_green = g > r && g > b;
 
-        let is_leaf = is_green_or_brown || is_dark_lesion;
+        // Disease spots/lesions: brown/yellow tones with moderate color difference
+        let is_brown_lesion = r > b && g > (b * 0.8) && chroma > 15.0;
+
+        // Require minimum chroma (>20) to filter out neutral grey/black/white backgrounds
+        let is_leaf = chroma >= 20.0 && (is_green || is_brown_lesion);
+
         if !is_leaf {
-            pixel[0] = (pixel[0] as f32 * 0.2) as u8;
-            pixel[1] = (pixel[1] as f32 * 0.2) as u8;
-            pixel[2] = (pixel[2] as f32 * 0.2) as u8;
+            // Mask non-leaf background elements to black
+            pixel[0] = 0;
+            pixel[1] = 0;
+            pixel[2] = 0;
+            pixel[3] = 255;
         }
     }
 }
@@ -318,12 +331,14 @@ mod tests {
     fn test_leaf_segmentation_hsv() {
         let mut img = RgbaImage::new(1, 2);
 
-        img.put_pixel(0, 0, image::Rgba([0, 200, 0, 255]));
-        img.put_pixel(0, 1, image::Rgba([200, 0, 0, 255]));
+        img.put_pixel(0, 0, image::Rgba([0, 200, 0, 255]));   // Green leaf -> keep
+        img.put_pixel(0, 1, image::Rgba([128, 128, 128, 255])); // Grey background -> mask to black
 
         segment_leaf_hsv(&mut img);
 
         assert_eq!(img.get_pixel(0, 0)[1], 200);
-        assert_eq!(img.get_pixel(0, 1)[0], 40);
+        assert_eq!(img.get_pixel(0, 1)[0], 0);
+        assert_eq!(img.get_pixel(0, 1)[1], 0);
+        assert_eq!(img.get_pixel(0, 1)[2], 0);
     }
 }

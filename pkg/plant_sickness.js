@@ -184,7 +184,7 @@ export function process_image_full(image_bytes, filters) {
     }
     return ProcessedResult.__wrap(ret[0]);
 }
-function __wbg_get_imports(memory) {
+function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
         __wbg___wbindgen_throw_5d9e815e6fdf150f: function(arg0, arg1) {
@@ -229,7 +229,6 @@ function __wbg_get_imports(memory) {
             table.set(offset + 2, true);
             table.set(offset + 3, false);
         },
-        memory: memory || new WebAssembly.Memory({initial:1024}),
     };
     return {
         __proto__: null,
@@ -444,19 +443,19 @@ async function __wbg_load(module, imports) {
     }
 }
 
-function initSync(module, memory) {
+function initSync(module) {
     if (wasm !== undefined) return wasm;
 
 
     if (module !== undefined) {
         if (Object.getPrototypeOf(module) === Object.prototype) {
-            ({module, memory} = module)
+            ({module} = module)
         } else {
             console.warn('using deprecated parameters for `initSync()`; pass a single object instead')
         }
     }
 
-    const imports = __wbg_get_imports(memory);
+    const imports = __wbg_get_imports();
     if (!(module instanceof WebAssembly.Module)) {
         module = new WebAssembly.Module(module);
     }
@@ -464,13 +463,13 @@ function initSync(module, memory) {
     return __wbg_finalize_init(instance, module);
 }
 
-async function __wbg_init(module_or_path, memory) {
+async function __wbg_init(module_or_path) {
     if (wasm !== undefined) return wasm;
 
 
     if (module_or_path !== undefined) {
         if (Object.getPrototypeOf(module_or_path) === Object.prototype) {
-            ({module_or_path, memory} = module_or_path)
+            ({module_or_path} = module_or_path)
         } else {
             console.warn('using deprecated parameters for the initialization function; pass a single object instead')
         }
@@ -479,7 +478,7 @@ async function __wbg_init(module_or_path, memory) {
     if (module_or_path === undefined) {
         module_or_path = new URL('plant_sickness_bg.wasm', import.meta.url);
     }
-    const imports = __wbg_get_imports(memory);
+    const imports = __wbg_get_imports();
 
     if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {
         module_or_path = fetch(module_or_path);
